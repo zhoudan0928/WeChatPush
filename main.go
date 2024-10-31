@@ -3,7 +3,7 @@ package main
 import (
 	"bestrui/wechatpush/mail"
 	"bestrui/wechatpush/openwechat"
-	"fmt"
+	"log"
 	"strings"
 )
 
@@ -17,11 +17,13 @@ func main() {
 
 	// 登录
 	if err := bot.HotLogin(reloadStorage); err != nil {
-		fmt.Println("热登陆失败，尝试免扫码登录")
-		bot.PushLogin(reloadStorage, openwechat.NewRetryLoginOption())
+		log.Println("热登陆失败，尝试免扫码登录")
+		if err := bot.PushLogin(reloadStorage, openwechat.NewRetryLoginOption()); err != nil {
+			log.Fatalf("登录失败: %v", err)
+		}
 	}
 
-	fmt.Println("登陆成功")
+	log.Println("登陆成功")
 
 	bot.MessageHandler = func(msg *openwechat.Message) {
 		if msg.IsSendBySelf() { //自己发送的消息
@@ -30,7 +32,7 @@ func main() {
 		} else if msg.IsSendByFriend() { //好友发送的消息
 			friendSender, err := msg.Sender()
 			if err != nil {
-				fmt.Println(err)
+				log.Printf("获取发送者信息失败: %v", err)
 				return
 			}
 
@@ -39,36 +41,43 @@ func main() {
 				friendSenderName = friendSender.NickName
 			}
 
+			var content string
 			if msg.IsText() {
-				fmt.Println(friendSenderName, ":", msg.Content)
-				mail.SendEmail(friendSenderName, msg.Content)
+				content = msg.Content
+				log.Printf("%s: %s", friendSenderName, content)
 			} else if msg.IsPicture() {
-				fmt.Println(friendSenderName, ":", "[图片]")
-				mail.SendEmail(friendSenderName, "[图片]")
+				content = "[图片]"
+				log.Printf("%s: [图片]", friendSenderName)
 			} else if msg.IsVoice() {
-				fmt.Println(friendSenderName, ":", "[语音]")
-				mail.SendEmail(friendSenderName, "[语音]")
+				content = "[语音]"
+				log.Printf("%s: [语音]", friendSenderName)
 			} else if msg.IsVideo() {
-				fmt.Println(friendSenderName, ":", "[视频]")
-				mail.SendEmail(friendSenderName, "[视频]")
+				content = "[视频]"
+				log.Printf("%s: [视频]", friendSenderName)
 			} else if msg.IsEmoticon() {
-				fmt.Println(friendSenderName, ":", "[动画表情]")
-				mail.SendEmail(friendSenderName, "[动画表情]")
+				content = "[动画表情]"
+				log.Printf("%s: [动画表情]", friendSenderName)
 			} else {
-				fmt.Println(friendSenderName, ":", "[未知类型消息]")
-				mail.SendEmail(friendSenderName, "[未知类型消息]")
+				content = "[未知类型消息]"
+				log.Printf("%s: [未知类型消息]", friendSenderName)
+			}
+
+			if err := mail.SendEmail(friendSenderName, content); err != nil {
+				log.Printf("发送邮件失败: %v", err)
 			}
 		} else { //群聊发送的消息
 			groupSender, err := msg.SenderInGroup()
 			if err != nil {
-				fmt.Println(err)
+				log.Printf("获取群聊发送者信息失败: %v", err)
 				return
 			}
 			if msg.IsText() {
 				//群聊中只接受 @所有人 消息
 				if strings.Contains(msg.Content, "@所有人") {
-					fmt.Println(groupSender.NickName, ":", msg.Content)
-					mail.SendEmail(groupSender.NickName, msg.Content)
+					log.Printf("%s: %s", groupSender.NickName, msg.Content)
+					if err := mail.SendEmail(groupSender.NickName, msg.Content); err != nil {
+						log.Printf("发送邮件失败: %v", err)
+					}
 				}
 			}
 		}
