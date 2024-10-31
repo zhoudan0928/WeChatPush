@@ -328,6 +328,9 @@ func (b *Bot) DumpHotReloadStorage() error {
 // DumpTo 将热登录需要的数据写入到指定的 io.Writer 中
 // 注: 写之前最好先清空之前的数据
 func (b *Bot) DumpTo(writer io.Writer) error {
+	if writer == nil {
+		return errors.New("writer can not be nil")
+	}
 	jar := b.Caller.Client.Jar()
 	item := HotReloadStorageItem{
 		BaseRequest:  b.Storage.Request,
