@@ -2,11 +2,12 @@ package main
 
 import (
 	"bestrui/wechatpush/mail"
-	"bestrui/wechatpush/openwechat"
 	"log"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/eatmoreapple/openwechat"
 )
 
 func main() {
@@ -14,25 +15,32 @@ func main() {
 	log.SetOutput(os.Stdout)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
-	bot := openwechat.DefaultBot(openwechat.Desktop) // 桌面模式
+	// 创建热存储容器对象
+	reloadStorage := openwechat.NewFileHotReloadStorage("storage.json")
+	defer reloadStorage.Close()
+
+	// 创建一个新的机器人实例
+	bot := openwechat.DefaultBot(openwechat.Desktop)
 
 	// 注册消息处理函数
 	bot.MessageHandler = handleMessage
 
-	// 创建热存储容器对象
-	reloadStorage := openwechat.NewFileHotReloadStorage("/app/data/storage.json")
-	defer reloadStorage.Close()
+	// 注册登录事件
+	bot.UUIDCallback = openwechat.PrintlnQrcodeUrl
 
 	// 登录
-	if err := bot.HotLogin(reloadStorage, openwechat.NewRetryLoginOption()); err != nil {
-		log.Printf("热登录失败: %v", err)
-		log.Println("尝试正常登录")
-		if err := bot.Login(); err != nil {
-			log.Fatalf("登录失败: %v", err)
-		}
+	if err := bot.Login(); err != nil {
+		log.Printf("登录失败: %v", err)
+		return
 	}
 
-	log.Println("登录成功")
+	// 获取登陆的用户
+	self, err := bot.GetCurrentUser()
+	if err != nil {
+		log.Printf("获取当前用户失败: %v", err)
+		return
+	}
+	log.Printf("登录成功: %s", self.NickName)
 
 	// 阻塞主程序
 	bot.Block()
@@ -56,13 +64,16 @@ func handleMessage(msg *openwechat.Message) {
 		if sender == "" {
 			sender = friendSender.NickName
 		}
-	} else {
+	} else if msg.IsSendByGroup() {
 		groupSender, err := msg.SenderInGroup()
 		if err != nil {
 			log.Printf("获取群聊发送者信息失败: %v", err)
 			return
 		}
 		sender = groupSender.NickName
+	} else {
+		log.Println("未知的消息发送者类型")
+		return
 	}
 
 	switch {
