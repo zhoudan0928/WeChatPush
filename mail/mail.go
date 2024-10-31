@@ -7,6 +7,7 @@ import (
 	"net/mail"
 	"net/smtp"
 	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 )
@@ -21,8 +22,21 @@ var (
 )
 
 func init() {
-	if err := godotenv.Load(".env"); err != nil {
-		log.Println("警告: 无法加载 .env 文件:", err)
+	// 尝试在不同位置加载 .env 文件
+	envPaths := []string{".env", "../.env", "../../.env", "/app/.env"}
+	envLoaded := false
+
+	for _, path := range envPaths {
+		absPath, _ := filepath.Abs(path)
+		if err := godotenv.Load(absPath); err == nil {
+			log.Printf("成功加载 .env 文件: %s", absPath)
+			envLoaded = true
+			break
+		}
+	}
+
+	if !envLoaded {
+		log.Println("警告: 无法加载 .env 文件，将使用环境变量")
 	}
 
 	from = mail.Address{
@@ -40,6 +54,11 @@ func init() {
 
 	if from.Address == "" || to.Address == "" || smtpServer == "" || username == "" || password == "" {
 		log.Println("警告: 一些必要的环境变量未设置")
+		log.Printf("FROM_ADDRESS: %s", from.Address)
+		log.Printf("TO_ADDRESS: %s", to.Address)
+		log.Printf("SMTP_SERVER: %s", smtpServer)
+		log.Printf("USERNAME: %s", username)
+		log.Printf("PASSWORD: %s", password != "")
 	}
 }
 
