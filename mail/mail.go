@@ -48,17 +48,21 @@ func init() {
 		Address: getEnv("TO_ADDRESS", ""),
 	}
 	smtpServer = getEnv("SMTP_SERVER", "")
-	smtpPort = getEnv("SMTP_PORT", "587")
-	username = getEnv("USERNAME", "")
+	smtpPort = getEnv("SMTP_PORT", "465")
+	username = getEnv("FROM_ADDRESS", "") // 使用FROM_ADDRESS作为username
 	password = getEnv("PASSWORD", "")
+
+	// 添加调试日志
+	log.Printf("调试: 从环境变量读取的值:")
+	log.Printf("FROM_ADDRESS: %s", from.Address)
+	log.Printf("TO_ADDRESS: %s", to.Address)
+	log.Printf("SMTP_SERVER: %s", smtpServer)
+	log.Printf("SMTP_PORT: %s", smtpPort)
+	log.Printf("USERNAME: %s", username)
+	log.Printf("PASSWORD: %s", password[:4]+"****") // 只显示密码的前四个字符
 
 	if from.Address == "" || to.Address == "" || smtpServer == "" || username == "" || password == "" {
 		log.Println("警告: 一些必要的环境变量未设置")
-		log.Printf("FROM_ADDRESS: %s", from.Address)
-		log.Printf("TO_ADDRESS: %s", to.Address)
-		log.Printf("SMTP_SERVER: %s", smtpServer)
-		log.Printf("USERNAME: %s", username)
-		log.Printf("PASSWORD: %s", password != "")
 	}
 }
 
@@ -70,38 +74,48 @@ func getEnv(key, fallback string) string {
 }
 
 func SendEmail(name string, content string) error {
-	auth := smtp.PlainAuth("", username, password, smtpServer)
+	// 添加调试日志
+	log.Printf("调试: 发送邮件时使用的值:")
+	log.Printf("SMTP_SERVER: %s", smtpServer)
+	log.Printf("SMTP_PORT: %s", smtpPort)
+	log.Printf("USERNAME: %s", username)
+	log.Printf("PASSWORD: %s", password[:4]+"****") // 只显示密码的前四个字符
 
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true,
-		ServerName:         smtpServer,
-	}
+	// 连接到服务器
+	addr := fmt.Sprintf("%s:%s", smtpServer, smtpPort)
+	log.Printf("尝试连接到SMTP服务器: %s", addr)
 
-	conn, err := tls.Dial("tcp", smtpServer+":"+smtpPort, tlsConfig)
+	// 建立SSL连接
+	tlsConfig := &tls.Config{ServerName: smtpServer}
+	conn, err := tls.Dial("tcp", addr, tlsConfig)
 	if err != nil {
-		return fmt.Errorf("无法连接到SMTP服务器: %v", err)
+		return fmt.Errorf("无法建立SSL连接: %v", err)
 	}
 	defer conn.Close()
 
-	smtpClient, err := smtp.NewClient(conn, smtpServer)
+	// 创建SMTP客户端
+	client, err := smtp.NewClient(conn, smtpServer)
 	if err != nil {
-		return fmt.Errorf("无法创建SMTP客户端: %v", err)
+		return fmt.Errorf("创建SMTP客户端失败: %v", err)
 	}
-	defer smtpClient.Quit()
+	defer client.Close()
 
-	if err = smtpClient.Auth(auth); err != nil {
+	// 使用PlainAuth进行认证
+	auth := smtp.PlainAuth("", username, password, smtpServer)
+	if err = client.Auth(auth); err != nil {
 		return fmt.Errorf("SMTP认证失败: %v", err)
 	}
 
-	if err = smtpClient.Mail(from.Address); err != nil {
+	// 设置发件人和收件人
+	if err = client.Mail(from.Address); err != nil {
 		return fmt.Errorf("设置发件人失败: %v", err)
 	}
-
-	if err = smtpClient.Rcpt(to.Address); err != nil {
+	if err = client.Rcpt(to.Address); err != nil {
 		return fmt.Errorf("设置收件人失败: %v", err)
 	}
 
-	w, err := smtpClient.Data()
+	// 发送邮件正文
+	w, err := client.Data()
 	if err != nil {
 		return fmt.Errorf("创建邮件数据写入器失败: %v", err)
 	}
