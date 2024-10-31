@@ -93,7 +93,7 @@ func handleMessage(msg *openwechat.Message) {
 
 	log.Printf("%s: %s", sender, content)
 
-	if !msg.IsSendByGroup() || (msg.IsText() && strings.Contains(msg.Content, "@所有人")) {
+	if content != "[未知类型消息]" && (!msg.IsSendByGroup() || (msg.IsText() && strings.Contains(msg.Content, "@所有人"))) {
 		for i := 0; i < 3; i++ { // 重试3次
 			if err := mail.SendEmail(sender, content); err != nil {
 				log.Printf("发送邮件失败 (尝试 %d/3): %v", i+1, err)
