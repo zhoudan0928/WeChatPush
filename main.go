@@ -3,6 +3,7 @@ package main
 import (
 	"bestrui/wechatpush/mail"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -41,6 +42,9 @@ func main() {
 		return
 	}
 	log.Printf("登录成功: %s", self.NickName)
+
+	// 启动HTTP服务器
+	go startHTTPServer()
 
 	// 阻塞主程序
 	bot.Block()
@@ -104,5 +108,21 @@ func handleMessage(msg *openwechat.Message) {
 			}
 		}
 		log.Printf("发送邮件失败，已达到最大重试次数")
+	}
+}
+
+func startHTTPServer() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("WeChatPush服务正在运行"))
+	})
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("启动HTTP服务器在端口 %s", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Fatal("HTTP服务器启动失败:", err)
 	}
 }
