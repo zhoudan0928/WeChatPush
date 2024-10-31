@@ -2,6 +2,8 @@ package mail
 
 import (
 	"crypto/tls"
+	"fmt"
+	"log"
 	"net/mail"
 	"net/smtp"
 	"os"
@@ -16,49 +18,84 @@ var (
 	smtpPort   string
 	username   string
 	password   string
-	auth       smtp.Auth
-	tlsConfig  *tls.Config
-	smtpClient *smtp.Client
 )
 
 func init() {
-	godotenv.Load(".env")
+	if err := godotenv.Load(".env"); err != nil {
+		log.Println("警告: 无法加载 .env 文件:", err)
+	}
 
 	from = mail.Address{
-		Name:    os.Getenv("FROM_NAME"),
-		Address: os.Getenv("FROM_ADDRESS"), // 发件人邮箱
+		Name:    getEnv("FROM_NAME", "发件人"),
+		Address: getEnv("FROM_ADDRESS", ""),
 	}
 	to = mail.Address{
-		Name:    os.Getenv("TO_NAME"),
-		Address: os.Getenv("TO_ADDRESS"), // 收件人邮箱
+		Name:    getEnv("TO_NAME", "收件人"),
+		Address: getEnv("TO_ADDRESS", ""),
 	}
-	smtpServer = os.Getenv("SMTP_SERVER") // SMTP 服务器地址
-	smtpPort = os.Getenv("SMTP_PORT")     // SMTP 服务器端口号
-	username = os.Getenv("USERNAME")      // 发件人邮箱用户名
-	password = os.Getenv("PASSWORD")      // 发件人邮箱密码
+	smtpServer = getEnv("SMTP_SERVER", "")
+	smtpPort = getEnv("SMTP_PORT", "587")
+	username = getEnv("USERNAME", "")
+	password = getEnv("PASSWORD", "")
 
+	if from.Address == "" || to.Address == "" || smtpServer == "" || username == "" || password == "" {
+		log.Println("警告: 一些必要的环境变量未设置")
+	}
 }
-func SendEmail(name string, content string) {
 
-	auth = smtp.PlainAuth("", username, password, smtpServer)
+func getEnv(key, fallback string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return fallback
+}
 
-	tlsConfig = &tls.Config{
+func SendEmail(name string, content string) error {
+	auth := smtp.PlainAuth("", username, password, smtpServer)
+
+	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
 		ServerName:         smtpServer,
 	}
 
-	conn, _ := tls.Dial("tcp", smtpServer+":"+smtpPort, tlsConfig)
-	smtpClient, _ = smtp.NewClient(conn, smtpServer)
-	smtpClient.Auth(auth)
-	smtpClient.Mail(from.Address)
-	smtpClient.Rcpt(to.Address)
+	conn, err := tls.Dial("tcp", smtpServer+":"+smtpPort, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("无法连接到SMTP服务器: %v", err)
+	}
+	defer conn.Close()
 
-	msg := "From: " + from.String() + "\r\n" +
-		"To: " + to.String() + "\r\n" +
-		"Subject: " + name + ":" + content
+	smtpClient, err := smtp.NewClient(conn, smtpServer)
+	if err != nil {
+		return fmt.Errorf("无法创建SMTP客户端: %v", err)
+	}
+	defer smtpClient.Quit()
 
-	w, _ := smtpClient.Data()
+	if err = smtpClient.Auth(auth); err != nil {
+		return fmt.Errorf("SMTP认证失败: %v", err)
+	}
+
+	if err = smtpClient.Mail(from.Address); err != nil {
+		return fmt.Errorf("设置发件人失败: %v", err)
+	}
+
+	if err = smtpClient.Rcpt(to.Address); err != nil {
+		return fmt.Errorf("设置收件人失败: %v", err)
+	}
+
+	w, err := smtpClient.Data()
+	if err != nil {
+		return fmt.Errorf("创建邮件数据写入器失败: %v", err)
+	}
 	defer w.Close()
 
-	w.Write([]byte(msg))
+	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\n\r\n%s",
+		from.String(), to.String(), name, content)
+
+	_, err = w.Write([]byte(msg))
+	if err != nil {
+		return fmt.Errorf("写入邮件内容失败: %v", err)
+	}
+
+	log.Println("邮件发送成功")
+	return nil
 }
