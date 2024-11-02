@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine
+FROM golang:1.21-alpine as builder
 
 WORKDIR /app
 
@@ -11,25 +11,38 @@ ENV GO111MODULE=on \
 # 安装基本工具
 RUN apk add --no-cache git tzdata
 
-# 复制go.mod和go.sum
+# 复制 go mod 文件
 COPY go.mod go.sum ./
 
-# 下载依赖并整理
-RUN go mod download && go mod tidy
+# 下载所有依赖
+RUN go mod download
+RUN go get github.com/eatmoreapple/openwechat
 
-# 复制源代码
+# 复制源代码（排除 .env）
 COPY . .
-
-# 确保删除.env文件
 RUN rm -f .env
 
-# 构建应用
-RUN go build -o main .
+# 确保所有依赖正确处理
+RUN go mod tidy
 
-# 暴露端口
-EXPOSE 8080
+# 构建应用
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o main .
+
+FROM alpine
+
+# 安装证书和时区数据
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /app
+
+COPY --from=builder /app/main .
 
 # 设置时区
 ENV TZ=Asia/Shanghai
 
-CMD ["./main"]
+
+
+# 设置端口环境变量
+ENV PORT=8080
+
+CMD ["/app/main"]
